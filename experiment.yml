@@ -31,7 +31,11 @@ experiments:
         snapshotter: overlayfs
       other:
 
-      - image: docker.io/jimjuniorb/fio-urunc:0.4
+      - image: docker.io/jimjuniorb/fio-urunc:0.5
         runtime: urunc
         snapshotter: devmapper
+
+      - image: docker.io/jimjuniorb/fio-urunc:0.5
+        runtime: urunc
+        snapshotter: overlayfs
 
