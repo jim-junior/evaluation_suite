@@ -24,7 +24,6 @@ type commandRunner func(context.Context, ...string) ([]byte, []byte, error)
 type Adapter struct {
 	run           commandRunner
 	serverName    string
-	serverIP      string
 	serverRunning bool
 	networkName   string
 }
@@ -34,13 +33,24 @@ func NewAdapter() *Adapter { return &Adapter{run: runNerdctl} }
 func (a *Adapter) ExperimentName() string { return "network" }
 
 func (a *Adapter) Prepare(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
-	log.Printf("Preparing network benchmark trial=%s runtime=%s handler=%s image=%s\n", tc.Trial.ID, tc.Trial.RuntimeName, tc.Trial.RuntimeHandler, image(tc))
+	log.Printf(
+		"Preparing network benchmark trial=%s runtime=%s handler=%s image=%s\n",
+		tc.Trial.ID,
+		tc.Trial.RuntimeName,
+		tc.Trial.RuntimeHandler,
+		image(tc),
+	)
 	startedAt := time.Now()
 	stdout, stderr, err := a.run(ctx, "pull", image(tc))
-	result := stageResult(harnessruntime.StagePrepare, startedAt, tc, "Pull iperf3 image", map[string]any{
-		"stdout": strings.TrimSpace(string(stdout)),
-		"stderr": strings.TrimSpace(string(stderr)),
-	})
+	result := stageResult(
+		harnessruntime.StagePrepare,
+		startedAt,
+		tc,
+		"Pull iperf3 image",
+		map[string]any{
+			"stdout": strings.TrimSpace(string(stdout)),
+			"stderr": strings.TrimSpace(string(stderr)),
+		})
 	if err != nil {
 		return result, commandError("pull iperf3 image", err, stdout, stderr)
 	}
@@ -48,17 +58,28 @@ func (a *Adapter) Prepare(ctx context.Context, tc harnessruntime.TrialContext) (
 }
 
 func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
-	log.Printf("Creating network benchmark trial=%s runtime=%s handler=%s image=%s\n", tc.Trial.ID, tc.Trial.RuntimeName, tc.Trial.RuntimeHandler, image(tc))
+	log.Printf(
+		"Creating network benchmark trial=%s runtime=%s handler=%s image=%s\n",
+		tc.Trial.ID,
+		tc.Trial.RuntimeName,
+		tc.Trial.RuntimeHandler,
+		image(tc),
+	)
 	startedAt := time.Now()
 
 	a.networkName = tc.Trial.ID + "-iperf3-network"
 	// 1. Create a dedicated network for the iperf3 server and client to communicate
 	stdout, stderr, err := a.run(ctx, "network", "create", a.networkName)
 	if err != nil {
-		result := stageResult(harnessruntime.StageCreate, startedAt, tc, "Create iperf3 network", map[string]any{
-			"stdout": strings.TrimSpace(string(stdout)),
-			"stderr": strings.TrimSpace(string(stderr)),
-		})
+		result := stageResult(
+			harnessruntime.StageCreate,
+			startedAt,
+			tc,
+			"Create iperf3 network",
+			map[string]any{
+				"stdout": strings.TrimSpace(string(stdout)),
+				"stderr": strings.TrimSpace(string(stderr)),
+			})
 		return result, commandError("create iperf3 network", err, stdout, stderr)
 	}
 
@@ -84,15 +105,15 @@ func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext
 	// temporary log file to capture the server's output
 	logFile, err := os.CreateTemp("", "iperf3-server-*.log")
 	if err != nil {
-		panic(err)
+		return stageResult(
+				harnessruntime.StageCreate,
+				startedAt, tc,
+				"Create iperf3 server log file",
+				nil,
+			),
+			fmt.Errorf("failed to create log file for iperf3 server: %w", err)
 	}
 	defer logFile.Close()
-
-	devNull, err := os.Open(os.DevNull)
-	if err != nil {
-		panic(err)
-	}
-	defer devNull.Close()
 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = logFile
@@ -110,10 +131,15 @@ func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext
 
 	a.serverRunning = true
 
-	return stageResult(harnessruntime.StageCreate, startedAt, tc, "Start iperf3 server", map[string]any{
-		"server_name": a.serverName,
-		"server_ip":   a.serverIP,
-	}), nil
+	return stageResult(
+		harnessruntime.StageCreate,
+		startedAt,
+		tc,
+		"Start iperf3 server",
+		map[string]any{
+			"server_name": a.serverName,
+		},
+	), nil
 }
 
 func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
@@ -123,17 +149,29 @@ func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext)
 	time.Sleep(2 * time.Second)
 
 	clientName := tc.Trial.ID + "-iperf3-client"
-	stdout, stderr, err := a.run(ctx,
-		"run", "-it", "--rm", "--name", clientName,
+	stdout, stderr, err := a.run(
+		ctx,
+		"run",
+		"-it",
+		"--rm",
+		"--name", clientName,
 		"--runtime", tc.Trial.RuntimeHandler,
 		"--network", a.networkName,
-		image(tc), "-c", a.serverName, "--json",
+		image(tc),
+		"-c", a.serverName,
+		"--json",
 	)
 	if err != nil {
 		_ = a.removeServer(context.Background())
-		result := stageResult(harnessruntime.StageStart, startedAt, tc, "Run iperf3 client", map[string]any{
-			"stderr": strings.TrimSpace(string(stderr)),
-		})
+		result := stageResult(
+			harnessruntime.StageStart,
+			startedAt,
+			tc,
+			"Run iperf3 client",
+			map[string]any{
+				"stderr": strings.TrimSpace(string(stderr)),
+			},
+		)
 		return result, commandError("run iperf3 client", err, stdout, stderr)
 	}
 
@@ -165,9 +203,8 @@ func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext)
 	}
 
 	return stageResult(harnessruntime.StageStart, startedAt, tc, "Run iperf3 client", map[string]any{
-		"server_ip": a.serverIP,
-		"iperf3":    iperfResult,
-		"stderr":    strings.TrimSpace(string(stderr)),
+		"iperf3": iperfResult,
+		"stderr": strings.TrimSpace(string(stderr)),
 	}), nil
 }
 
