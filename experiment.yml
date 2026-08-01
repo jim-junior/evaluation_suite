@@ -53,3 +53,10 @@ experiments:
         runtime: urunc
         snapshotter: overlayfs
 
+  network:
+    workloads:
+      default:
+        image: networkstatic/iperf3:latest
+      other:
+      - image: docker.io/jimjuniorb/iperf3-urunc:0.2
+        runtime: urunc
