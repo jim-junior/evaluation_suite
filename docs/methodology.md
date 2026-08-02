@@ -112,18 +112,12 @@ All elapsed times will use Go's monotonic clock or `clock_gettime(CLOCK_MONOTONI
 ### 5.1 Proposed result layout
 
 ```text
-results/<experiment-id>/<run-id>/
-|-- manifest.yaml
-|-- environment.json
-|-- trials.jsonl
-|-- raw/
-|   |-- <trial-id>-workload.json
-|   |-- <trial-id>-collector.jsonl
-|   `-- <trial-id>-tool-output.json
-`-- logs/
-    |-- <trial-id>-stdout.log
-    |-- <trial-id>-stderr.log
-    `-- <trial-id>-runtime.log
+results/
+└── run-20260721T120000Z/
+    ├── environment.json
+    ├── manifest.yaml
+    ├── plan.json
+    └── run.json
 ```
 
 The harness will preserve original tool output. Summaries will be generated from raw data and will never replace it.
@@ -147,28 +141,28 @@ The final lifecycle adapter will use the containerd API instead of spawning this
 
 ### 6.1 Workload
 
-The lifecycle experiment will use `nginx:alpine` as the primary workload. This image is small, widely available, starts a long-running server process by default, and provides a simple HTTP readiness target without requiring a custom benchmark program.
+The lifecycle latency experiment will use `nginx:alpine` as the primary workload for runtimes `runc`, `kata` and `runsc`, then fir urunc it will use a container image built from the `minimalc` program that is located in [https://github.com/urunc-dev/evaluation_suite/blob/main/workloads/minimal-c/main.c](https://github.com/urunc-dev/evaluation_suite/blob/main/workloads/minimal-c/main.c).
 
 The image will be pulled, unpacked, and pinned by digest before timed trials begin. The container will use the image's default command so that the benchmark does not add shell startup overhead through `/bin/sh -c ...`.
 
-HTTP readiness will be measured by probing the nginx HTTP endpoint after the task-start request is issued. If the default `nginx:alpine` image is used unchanged, the probe target will be `/`.
+HTTP readiness will be measured by probing the nginx HTTP endpoint after the task-start request is issued. If the default `nginx:alpine` image is used unchanged, the probe target will be `/`. 
 
-For `urunc`, the nginx image will be packagesd to be compatible with `urunc` using [bunny](https://github.com/nubificus/bunny) as explained in this tutorial [https://urunc.io/tutorials/existing-container-linux/](https://urunc.io/tutorials/existing-container-linux/)
+For `urunc`, the nginx image will be packaged to be compatible with `urunc` using [bunny](https://github.com/nubificus/bunny) as explained in this tutorial [https://urunc.io/tutorials/existing-container-linux/](https://urunc.io/tutorials/existing-container-linux/)
 
 ### 6.2 Measurement boundaries
 
-containerd distinguishes a container metadata object from a live task. Creating metadata with `ctr containers create` or the containerd Go client's `NewContainer` is therefore not the OCI runtime create measurement. Container metadata creation, snapshot preparation, image pull, and image unpack will happen before the measured lifecycle interval.
+containerd distinguishes a container metadata object from a live task. Creating metadata with `ctr containers create` or the containerd Go client's `NewContainer` is therefore not the OCI runtime create measurement. Container metadata creation, snapshot preparation, image pull, and image unpack will happen before the measured lifecycle interval. This will be done in the `prepare` stage of the harness lifecyle.
 
 The primary lifecycle measurements will be event-based. The harness will issue lifecycle operations through the containerd Go client, but the recorded OCI lifecycle boundaries will be based on the corresponding containerd task events.
 
-| Metric                    | Start                                                             | End                                       |
-| ------------------------- | ----------------------------------------------------------------- | ----------------------------------------- |
-| Task create event latency | Immediately before containerd `NewTask` / task-create request     | Matching task-create event is observed    |
-| Task start event latency  | Immediately before task-start request                             | Matching task-start event is observed     |
-| Task delete event latency | Immediately before task-delete request after the task has stopped | Matching task-delete event is observed    |
-| HTTP ready latency        | Immediately before task-start request                             | First successful HTTP response from nginx |
+| Metric                    | Start                                                               | End                                       |
+| ------------------------- | ------------------------------------------------------------------- | ----------------------------------------- |
+| Task create event latency | Immediately before containerd `NewTask` / task-create request       | Matching `task/create` event is observed  |
+| Task start event latency  | Immediately before `task/start` request                             | Matching `task/start` event is observed   |
+| Task delete event latency | Immediately before `task/delete` request after the task has stopped | Matching `task/delete` event is observed  |
+| HTTP ready latency        | Immediately before `task/start` request                             | First successful HTTP response from nginx |
 
-Only these four metrics will be reported as the primary lifecycle results. The containerd Go client will be used so that CLI process startup is not included. Client RPC return times may still be logged as diagnostic data during development, but they will not be part of the primary reported lifecycle metrics.
+Only these four metrics will be reported as the primary lifecycle results. The containerd Go client will be used so that CLI process startup is not included. However for gVisor, we shall use the CLI by invoking the `runsc` command and passing parameters required to start the container such as name, bundle etc. Tis is because gvisor doesnot abide by the Containerd Runtime V2 Spec.
 
 During harness development, event-based measurements may be validated against equivalent `ctr` operations. These checks will only be used for implementation validation because `ctr` includes CLI overhead and reports client-observed behavior rather than event-observed lifecycle latency.
 
@@ -176,31 +170,19 @@ A runtime adapter layer will be used where necessary. For example, runc and Kata
 
 ### 6.3 Lifecycle experiment procedure
 
-1. Verify that the `nginx:alpine` image digest is present locally.
-2. Pre-create a unique container and snapshot outside the timed interval.
+1. Verify that the required image digest is present locally.
+2. Pre-create a unique container and snapshot outside the timed interval. For `runsc` this involves creating the container bundle from the image.
 3. Start the host collector.
 4. Subscribe to containerd task events for the trial container ID.
-5. Start the task-create timer immediately before issuing the containerd task-create request.
-6. Stop the task-create timer when the matching task-create event is observed.
-7. Start the task-start and HTTP-ready timers immediately before issuing the task-start request.
-8. Stop the task-start timer when the matching task-start event is observed.
-9. Probe the nginx HTTP endpoint until the first valid response and record HTTP ready latency.
-10. Hold the workload for five seconds to confirm that it remains healthy.
-11. Signal termination and wait for the task to exit.
-12. Start the task-delete timer immediately before issuing the task-delete request.
-13. Stop the task-delete timer when the matching task-delete event is observed.
-14. Delete container metadata and snapshot outside the OCI delete measurement.
-15. Audit cleanup and retain all errors, including leftover tasks, containers, cgroups, mounts, network interfaces, ports, or runtime helper processes.
+5. Start the task-create timer immediately before issuing the containerd `/tasks/create` request.
+6. Stop the task-create timer when the matching `/tasks/create` event is observed.
+7. Stop the task-start timer when the matching `/tasks/start` event is observed.
+8. Start the task-delete timer immediately before issuing the task-delete request.
+9. Stop the task-delete timer when the matching `/tasks/delete` event is observed.
+10. Delete container metadata and snapshot outside the OCI delete measurement.
+11. Audit cleanup and retain all errors, including leftover tasks, containers, cgroups, mounts, network interfaces, ports, or runtime helper processes.
 
-The HTTP-readiness test includes application initialization and network availability, so it will be reported separately from OCI task start.
-
-### 6.4 Cold and warm lifecycle runs
-
-- **Runtime-cold:** no live sandbox, no pre-created VM/unikernel pool, and a freshly restarted runtime/containerd block. Images remain locally available. This does not claim that the host page cache is cold.
-- **Warm:** image and runtime code paths have been exercised by three untimed trials, with no live sandbox carried into the measured trial.
-- **Provisioning-cold:** image absent and pulled during the trial. This is optional and reported separately from runtime latency.
-
-Lifecycle tests will use 10 runtime-cold repetitions and 30 warm repetitions per runtime. Runtime order will be randomized by block. Serial and concurrent launch will be tested separately at concurrency `1`, `2`, `4`, and `8`.
+The HTTP-readiness test includes application initialization and network availability, so it will be reported separately from OCI task start. It will involve a separate process, attempting to connect to the container port in very short intervals, and then record the timestamp once a valid connection is made
 
 If a runtime cannot reliably produce the required task events through the selected containerd handler, its lifecycle results will not be silently mixed into the main comparison. The failure mode will be reported separately, and the runtime may be measured through a runtime-specific adapter only if that adapter's boundaries are clearly documented.
 

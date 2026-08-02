@@ -16,6 +16,7 @@ import (
 	"github.com/urunc-dev/evaluation_suite/internal/orchestrator"
 	"github.com/urunc-dev/evaluation_suite/internal/plan"
 	harnessruntime "github.com/urunc-dev/evaluation_suite/internal/runtime"
+	runtimeHTTPReadiness "github.com/urunc-dev/evaluation_suite/internal/runtime/httpreadiness"
 	runtimeLifecycle "github.com/urunc-dev/evaluation_suite/internal/runtime/lifecycle"
 	runtimeStorage "github.com/urunc-dev/evaluation_suite/internal/runtime/storage"
 )
@@ -77,7 +78,15 @@ func NewRunCommand() *cobra.Command {
 				return runtimeStorage.NewAdapter(containerdClient, &containerdNamespace), nil
 			}
 
-			orch := orchestrator.New(lifecycleAdapterFactory, storageAdapterFactory)
+			httpReadinessAdapterFactory := func(trial plan.Trial) (harnessruntime.Adapter, error) {
+				return runtimeHTTPReadiness.NewAdapter(), nil
+			}
+
+			orch := orchestrator.New(
+				lifecycleAdapterFactory,
+				storageAdapterFactory,
+				httpReadinessAdapterFactory,
+			)
 
 			result, err := orch.Run(cmd.Context(), p, orchestrator.Options{
 				RunID: runID,
