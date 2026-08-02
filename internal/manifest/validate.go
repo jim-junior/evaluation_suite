@@ -74,6 +74,17 @@ func Validate(m *Manifest) error {
 		for i, w := range exp.Workloads.Other {
 			validateWorkload(fmt.Sprintf("experiments.%s.workloads.other[%d]", name, i), w)
 		}
+
+		if name == "http-readiness" {
+			if exp.Workloads.Default.Ports == nil {
+				errs = append(errs, "experiments.http-readiness.workloads.default.ports is required")
+			}
+			for i, w := range exp.Workloads.Other {
+				if w.Ports == nil {
+					errs = append(errs, fmt.Sprintf("experiments.http-readiness.workloads.other[%d].ports is required", i))
+				}
+			}
+		}
 	}
 
 	if len(errs) > 0 {

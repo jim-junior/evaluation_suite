@@ -297,7 +297,7 @@ func (a *Adapter) Stop(
 	status, err := a.Task.Status(*a.ContainerdNamespace)
 	if err != nil {
 		log.Fatalf(
-			"get task status: %w",
+			"get task status: %v",
 			err,
 		)
 	}
@@ -308,7 +308,7 @@ func (a *Adapter) Stop(
 			syscall.SIGKILL,
 		); err != nil {
 			log.Fatalf(
-				"kill task: %w",
+				"kill task: %v",
 				err,
 			)
 		}
@@ -325,7 +325,7 @@ func (a *Adapter) Stop(
 		exitCode, exitTime, err := exitStatus.Result()
 		if err != nil {
 			log.Fatalf(
-				"read task exit status: %w",
+				"read task exit status: %v",
 				err,
 			)
 		}

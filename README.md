@@ -10,7 +10,9 @@ container runtimes. It currently supports experiments using:
 
 The harness runs lifecycle and storage benchmarks through containerd, records
 the host environment, and writes machine-readable results for the included
-analysis notebooks.
+analysis notebooks. It also includes a CLI-based HTTP readiness benchmark that
+uses `nerdctl` and records the time from `nerdctl start` to nginx's first HTTP
+200 response.
 
 ## Requirements
 
@@ -148,8 +150,25 @@ experiments:
           snapshotter: devmapper
 ```
 
-Only `lifecycle` and `storage` currently have benchmark adapters, so use those
-names as the experiment keys.
+The available experiment adapters are `lifecycle`, `storage`, and
+`http-readiness`.
+
+For HTTP readiness, specify the nginx image and an available host port. The
+adapter pulls and creates the container before measurement, then starts a GET
+request loop while invoking `nerdctl start`. Connection failures, timeouts, and
+all non-200 responses are ignored. The `wait_ready` stage in `run.json` records
+the first HTTP 200 time and latency:
+
+```yaml
+experiments:
+  http-readiness:
+    workloads:
+      default:
+        image: docker.io/library/nginx:latest
+        ports:
+          containerPort: 80
+          hostPort: 8080
+```
 
 ### 1. Declare runtimes
 
