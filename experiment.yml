@@ -21,7 +21,7 @@ experiments:
         image: docker.io/library/nginx:alpine
 
       other:
-      - image: docker.io/library/minimalc:test
+      - image: docker.io/jimjuniorb/minimalc:0.1
         runtime: urunc
 
   storage:
