@@ -28,7 +28,7 @@ func Run(
 
 	checkTool(report, "ctr", true)
 	checkTool(report, "containerd", false)
-
+	checkTool(report, "nerdctl", true)
 	if hasStorageExperiment(m) {
 		checkTool(report, "fio", false)
 		report.Add(
@@ -305,8 +305,12 @@ func checkEnvironmentVisibility(ctx context.Context, report *Report) {
 }
 
 func hasStorageExperiment(m *manifest.Manifest) bool {
+	return hasExperiment(m, "storage")
+}
+
+func hasExperiment(m *manifest.Manifest, expected string) bool {
 	for name := range m.Experiments {
-		if strings.EqualFold(name, "storage") {
+		if strings.EqualFold(name, expected) {
 			return true
 		}
 	}

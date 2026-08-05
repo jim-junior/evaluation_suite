@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 func Validate(m *Manifest) error {
@@ -65,6 +66,20 @@ func Validate(m *Manifest) error {
 				}
 				if v.Type == "" {
 					errs = append(errs, vpath+".type is required")
+				}
+			}
+
+			if name == "cpu" {
+				if w.CPU <= 0 {
+					errs = append(errs, path+".cpu must be greater than zero")
+				}
+				if w.CPUMethod == "" {
+					errs = append(errs, path+".cpuMethod is required")
+				}
+				if w.Timeout == "" {
+					errs = append(errs, path+".timeout is required")
+				} else if duration, err := time.ParseDuration(w.Timeout); err != nil || duration <= 0 {
+					errs = append(errs, path+".timeout must be a positive Go duration such as 30s")
 				}
 			}
 		}

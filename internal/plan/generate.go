@@ -129,6 +129,10 @@ func buildTrial(
 		Ports:          workload.Ports,
 		Volumes:        workload.Volumes,
 		Snapshotter:    workload.Snapshotter,
+		CPU:            workload.CPU,
+		CPUMethod:      workload.CPUMethod,
+		Timeout:        workload.Timeout,
+		MetricsBrief:   workload.MetricsBrief,
 	}
 }
 

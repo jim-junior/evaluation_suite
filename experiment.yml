@@ -53,10 +53,27 @@ experiments:
         runtime: urunc
         snapshotter: overlayfs
 
+
   network:
     workloads:
       default:
         image: networkstatic/iperf3:latest
       other:
       - image: docker.io/jimjuniorb/iperf3-urunc:0.3
+        runtime: urunc
+
+  cpu:
+    workloads:
+      default:
+        image: jimjuniorb/stress-ng-benchmark:0.1
+        cpu: 1
+        cpuMethod: matrixprod
+        timeout: 30s
+        metricsBrief: true
+      other:
+      - image: jimjuniorb/stress-ng-urunc:0.2
+        cpu: 1
+        cpuMethod: matrixprod
+        timeout: 30s
+        metricsBrief: true
         runtime: urunc

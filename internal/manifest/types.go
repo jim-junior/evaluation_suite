@@ -20,11 +20,15 @@ type Workloads struct {
 }
 
 type Workload struct {
-	Image       string   `yaml:"image"`
-	Runtime     string   `yaml:"runtime,omitempty"`
-	Ports       *Ports   `yaml:"ports,omitempty"`
-	Snapshotter string   `yaml:"snapshotter,omitempty"`
-	Volumes     []Volume `yaml:"volumes,omitempty"`
+	Image        string   `yaml:"image"`
+	Runtime      string   `yaml:"runtime,omitempty"`
+	Ports        *Ports   `yaml:"ports,omitempty"`
+	Snapshotter  string   `yaml:"snapshotter,omitempty"`
+	Volumes      []Volume `yaml:"volumes,omitempty"`
+	CPU          int      `yaml:"cpu,omitempty"`
+	CPUMethod    string   `yaml:"cpuMethod,omitempty"`
+	Timeout      string   `yaml:"timeout,omitempty"`
+	MetricsBrief bool     `yaml:"metricsBrief,omitempty"`
 }
 
 type Ports struct {

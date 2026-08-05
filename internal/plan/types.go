@@ -16,5 +16,9 @@ type Trial struct {
 	Image          string            `json:"image"`
 	Ports          *manifest.Ports   `json:"ports,omitempty"`
 	Volumes        []manifest.Volume `json:"volumes,omitempty"`
-	Snapshotter    string            `yaml:"snapshotter,omitempty"`
+	Snapshotter    string            `json:"snapshotter,omitempty"`
+	CPU            int               `json:"cpu,omitempty"`
+	CPUMethod      string            `json:"cpuMethod,omitempty"`
+	Timeout        string            `json:"timeout,omitempty"`
+	MetricsBrief   bool              `json:"metricsBrief,omitempty"`
 }
