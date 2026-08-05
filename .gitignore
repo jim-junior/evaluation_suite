@@ -13,7 +13,8 @@ harness
 
 # linux image
 
-images/*-urunc/bzImage
+
+images/*/bzImage
 
 
 # python cache
