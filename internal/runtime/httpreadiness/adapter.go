@@ -2,12 +2,15 @@ package httpreadiness
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 const (
 	retryInterval  = time.Millisecond
 	requestTimeout = 100 * time.Millisecond
+	cleanupTimeout = 15 * time.Second
 )
 
 type probeResult struct {
@@ -31,6 +35,8 @@ type Adapter struct {
 	probeCancel context.CancelFunc
 	startedAt   time.Time
 	url         string
+	logPath     string
+	cleanupMu   sync.Mutex
 }
 
 func NewAdapter() *Adapter {
@@ -42,18 +48,23 @@ func (a *Adapter) ExperimentName() string {
 }
 
 func (a *Adapter) Prepare(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
-	return runCommandStage(
+	result, err := runCommandStage(
 		ctx,
 		harnessruntime.StagePrepare,
 		"Pull HTTP readiness image",
 		tc,
 		"pull", tc.Trial.Image,
 	)
+	if err != nil {
+		err = a.cleanupAfterError(ctx, tc, err)
+	}
+	return result, err
 }
 
 func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
 	if tc.Trial.Ports == nil {
-		return harnessruntime.StageResult{}, fmt.Errorf("http-readiness trial %q requires ports", tc.Trial.ID)
+		err := fmt.Errorf("http-readiness trial %q requires ports", tc.Trial.ID)
+		return harnessruntime.StageResult{}, a.cleanupAfterError(ctx, tc, err)
 	}
 
 	portMapping := fmt.Sprintf(
@@ -62,7 +73,7 @@ func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext
 		tc.Trial.Ports.ContainerPort,
 	)
 
-	return runCommandStage(
+	result, err := runCommandStage(
 		ctx,
 		harnessruntime.StageCreate,
 		"Create HTTP readiness container",
@@ -74,11 +85,16 @@ func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext
 		"--publish", portMapping,
 		tc.Trial.Image,
 	)
+	if err != nil {
+		err = a.cleanupAfterError(ctx, tc, err)
+	}
+	return result, err
 }
 
 func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
 	if tc.Trial.Ports == nil {
-		return harnessruntime.StageResult{}, fmt.Errorf("http-readiness trial %q requires ports", tc.Trial.ID)
+		err := fmt.Errorf("http-readiness trial %q requires ports", tc.Trial.ID)
+		return harnessruntime.StageResult{}, a.cleanupAfterError(ctx, tc, err)
 	}
 
 	a.url = fmt.Sprintf("http://127.0.0.1:%d/", tc.Trial.Ports.HostPort)
@@ -92,22 +108,22 @@ func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext)
 
 	cmd := exec.CommandContext(ctx, "nerdctl", "start", "-a", tc.Trial.ID)
 	log.Printf("Running command: %s", cmd.String())
-	a.startedAt = time.Now()
-	startProbe <- a.startedAt
 
 	// temporary log file to capture the server's output
 	logFile, err := os.CreateTemp("", "http-readiness-*.log")
 	if err != nil {
-		return stageResult(
-				harnessruntime.StageStart,
-				"Start HTTP readiness container",
-				tc,
-				a.startedAt,
-				time.Now(),
-				map[string]interface{}{"url": a.url},
-			),
-			fmt.Errorf("failed to create log file for iperf3 server: %w", err)
+		result := stageResult(
+			harnessruntime.StageStart,
+			"Start HTTP readiness container",
+			tc,
+			a.startedAt,
+			time.Now(),
+			map[string]interface{}{"url": a.url},
+		)
+		err = fmt.Errorf("failed to create log file for HTTP readiness server: %w", err)
+		return result, a.cleanupAfterError(ctx, tc, err)
 	}
+	a.logPath = logFile.Name()
 	defer logFile.Close()
 
 	cmd.Stdin = os.Stdin
@@ -119,17 +135,24 @@ func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext)
 		Setsid: true,
 	}
 
+	a.startedAt = time.Now()
+	startProbe <- a.startedAt
+
 	if err := cmd.Start(); err != nil {
-		return stageResult(
-				harnessruntime.StageStart,
-				"Start HTTP readiness container",
-				tc,
-				a.startedAt,
-				time.Now(),
-				map[string]interface{}{"url": a.url},
-			),
-			fmt.Errorf("failed to start HTTP readiness container: %w", err)
+		result := stageResult(
+			harnessruntime.StageStart,
+			"Start HTTP readiness container",
+			tc,
+			a.startedAt,
+			time.Now(),
+			map[string]interface{}{"url": a.url},
+		)
+		err = fmt.Errorf("failed to start HTTP readiness container: %w", err)
+		return result, a.cleanupAfterError(ctx, tc, err)
 	}
+
+	// Fix: https://github.com/urunc-dev/evaluation_suite/pull/4#discussion_r3721760724
+	go func() { _ = cmd.Wait() }()
 
 	finishedAt := time.Now()
 	return stageResult(
@@ -144,7 +167,8 @@ func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext)
 
 func (a *Adapter) WaitReady(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
 	if a.readyCh == nil || a.startedAt.IsZero() {
-		return harnessruntime.StageResult{}, fmt.Errorf("http readiness probe was not started")
+		err := fmt.Errorf("http readiness probe was not started")
+		return harnessruntime.StageResult{}, a.cleanupAfterError(ctx, tc, err)
 	}
 
 	select {
@@ -171,7 +195,7 @@ func (a *Adapter) WaitReady(ctx context.Context, tc harnessruntime.TrialContext)
 		if a.probeCancel != nil {
 			a.probeCancel()
 		}
-		return harnessruntime.StageResult{}, ctx.Err()
+		return harnessruntime.StageResult{}, a.cleanupAfterError(ctx, tc, ctx.Err())
 	}
 }
 
@@ -179,35 +203,107 @@ func (a *Adapter) Stop(ctx context.Context, tc harnessruntime.TrialContext) (har
 	if a.probeCancel != nil {
 		a.probeCancel()
 	}
-	return runCommandStage(
+	result, err := runCommandStage(
 		ctx,
 		harnessruntime.StageStop,
 		"Stop HTTP readiness container",
 		tc,
 		"stop", tc.Trial.ID,
 	)
+	if err != nil {
+		err = a.cleanupAfterError(ctx, tc, err)
+	}
+	return result, err
 }
 
 func (a *Adapter) DeleteTask(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
-	return runCommandStage(
+	result, err := runCommandStage(
 		ctx,
 		harnessruntime.StageDelete,
 		"Delete HTTP readiness container",
 		tc,
 		"rm", "--force", tc.Trial.ID,
 	)
+	if err != nil {
+		err = a.cleanupAfterError(ctx, tc, err)
+	}
+	return result, err
 }
 
-func (a *Adapter) Cleanup(_ context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
-	now := time.Now()
+func (a *Adapter) Cleanup(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
+	startedAt := time.Now()
+	err := a.benchmarkCleanup(ctx, tc)
+	finishedAt := time.Now()
 	return stageResult(
 		harnessruntime.StageCleanup,
 		"HTTP readiness cleanup complete",
 		tc,
-		now,
-		now,
+		startedAt,
+		finishedAt,
 		nil,
-	), nil
+	), err
+}
+
+// benchmarkCleanup releases resources left by a completed or failed trial. It
+// is safe to call repeatedly: missing containers and log files are treated as
+// already cleaned. All cleanup actions are attempted before errors are returned.
+func (a *Adapter) benchmarkCleanup(ctx context.Context, tc harnessruntime.TrialContext) error {
+	a.cleanupMu.Lock()
+	defer a.cleanupMu.Unlock()
+
+	if a.probeCancel != nil {
+		a.probeCancel()
+		a.probeCancel = nil
+	}
+
+	// A failed stage commonly supplies an already-cancelled context. Preserve
+	// its values but give cleanup its own bounded window in which to finish.
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+
+	var cleanupErrors []error
+	if tc.Trial.ID != "" {
+		if err := runCleanupCommand(cleanupCtx, "stop", tc.Trial.ID); err != nil {
+			cleanupErrors = append(cleanupErrors, err)
+		}
+		if err := runCleanupCommand(cleanupCtx, "rm", "--force", tc.Trial.ID); err != nil {
+			cleanupErrors = append(cleanupErrors, err)
+		}
+	}
+
+	if a.logPath != "" {
+		if err := os.Remove(a.logPath); err != nil && !os.IsNotExist(err) {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("remove temporary log %q: %w", a.logPath, err))
+		} else {
+			a.logPath = ""
+		}
+	}
+
+	return errors.Join(cleanupErrors...)
+}
+
+func (a *Adapter) cleanupAfterError(ctx context.Context, tc harnessruntime.TrialContext, stageErr error) error {
+	if cleanupErr := a.benchmarkCleanup(ctx, tc); cleanupErr != nil {
+		return errors.Join(stageErr, fmt.Errorf("cleanup HTTP readiness benchmark: %w", cleanupErr))
+	}
+	return stageErr
+}
+
+func runCleanupCommand(ctx context.Context, args ...string) error {
+	cmd := exec.CommandContext(ctx, "nerdctl", args...)
+	log.Printf("Running cleanup command: %s", cmd.String())
+	output, err := cmd.CombinedOutput()
+	if err == nil || cleanupTargetMissing(output) {
+		return nil
+	}
+	return fmt.Errorf("run cleanup command %q: %w: %s", cmd.String(), err, output)
+}
+
+func cleanupTargetMissing(output []byte) bool {
+	message := strings.ToLower(string(output))
+	return strings.Contains(message, "no such container") ||
+		strings.Contains(message, "container not found") ||
+		strings.Contains(message, "does not exist")
 }
 
 func probeUntilOK(
