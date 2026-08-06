@@ -71,7 +71,7 @@ experiments:
         timeout: 30s
         metricsBrief: true
       other:
-      - image: jimjuniorb/stress-ng-urunc:0.2
+      - image: jimjuniorb/stress-ng-urunc:0.7
         cpu: 1
         cpuMethod: matrixprod
         timeout: 30s

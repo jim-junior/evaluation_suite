@@ -9,10 +9,14 @@ platforms:
 rootfs:
   from: jimjuniorb/stress-ng-benchmark:0.1
   type: raw
+  include:
+    - from: harbor.nbfc.io/nubificus/urunit:latest
+      source: /urunit
+      destination: /urunit
 
 kernel:
   from: local
   path: bzImage
 
 
-entrypoint: ["/usr/local/bin/stress-ng-wrapper"]
+entrypoint: ["/urunit", "/usr/local/bin/stress-ng-wrapper"]
