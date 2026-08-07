@@ -86,16 +86,15 @@ func NewRunCommand() *cobra.Command {
 				},
 				func(trial plan.Trial) (harnessruntime.Adapter, error) {
 					return runtimeHTTPReadiness.NewAdapter(), nil
-				}
+				},
 			)
-
 
 			orch := orchestrator.New(adapterFactories...)
 
 			result, err := orch.Run(cmd.Context(), p, orchestrator.Options{
 				RunID: runID,
 			})
-			
+
 			if err != nil {
 				return err
 			}
