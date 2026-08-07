@@ -65,6 +65,7 @@ func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext
 		tc.Trial.RuntimeHandler,
 		image(tc),
 	)
+
 	startedAt := time.Now()
 
 	a.networkName = tc.Trial.ID + "-iperf3-network"
@@ -126,10 +127,20 @@ func (a *Adapter) CreateTask(ctx context.Context, tc harnessruntime.TrialContext
 
 	if err := cmd.Start(); err != nil {
 		result := stageResult(harnessruntime.StageCreate, startedAt, tc, "Start iperf3 server", nil)
+		// print error
+		log.Printf("Failed to start iperf3 server: %v\n", err)
+
+		// clean up benchmark resources if the server fails to start
+		if cleanupErr := a.cleanupBenchmarkResources(ctx); cleanupErr != nil {
+			log.Printf("Failed to clean up benchmark resources: %v\n", cleanupErr)
+		}
+
 		return result, fmt.Errorf("failed to start iperf3 server: %w", err)
 	}
 
 	a.serverRunning = true
+
+	go func() { _ = cmd.Wait() }()
 
 	return stageResult(
 		harnessruntime.StageCreate,
@@ -161,45 +172,64 @@ func (a *Adapter) StartTask(ctx context.Context, tc harnessruntime.TrialContext)
 		"-c", a.serverName,
 		"--json",
 	)
+
 	if err != nil {
-		_ = a.removeServer(context.Background())
-		result := stageResult(
+		log.Printf("Failed to run iperf3 client: %v\n", err)
+		// clean up benchmark resources if the client fails to run
+		if cleanupErr := a.cleanupBenchmarkResources(ctx); cleanupErr != nil {
+			log.Printf("Failed to clean up benchmark resources: %v\n", cleanupErr)
+		}
+		return stageResult(
 			harnessruntime.StageStart,
 			startedAt,
 			tc,
 			"Run iperf3 client",
 			map[string]any{
+				"stdout": strings.TrimSpace(string(stdout)),
 				"stderr": strings.TrimSpace(string(stderr)),
 			},
-		)
-		return result, commandError("run iperf3 client", err, stdout, stderr)
+		), fmt.Errorf("failed to run iperf3 client: %w", err)
 	}
 
 	jsonOutput, err := ExtractJSONObject(stdout)
 	if err != nil {
-		_ = a.removeServer(context.Background())
+		log.Printf("Failed to extract JSON from iperf3 client output: %v\n", err)
+		// clean up benchmark resources if the client fails to run
+		if cleanupErr := a.cleanupBenchmarkResources(ctx); cleanupErr != nil {
+			log.Printf("Failed to clean up benchmark resources: %v\n", cleanupErr)
+		}
 
-		result := stageResult(
+		return stageResult(
 			harnessruntime.StageStart,
 			startedAt,
 			tc,
-			"Extract iperf3 JSON",
+			"Run iperf3 client",
 			map[string]any{
 				"stdout": strings.TrimSpace(string(stdout)),
 				"stderr": strings.TrimSpace(string(stderr)),
 			},
-		)
-
-		return result, fmt.Errorf("could not extract iperf3 JSON: %w", err)
+		), fmt.Errorf("failed to extract JSON from iperf3 client output: %w", err)
 	}
 
 	var iperfResult map[string]any
+
 	if err := json.Unmarshal(jsonOutput, &iperfResult); err != nil {
-		_ = a.removeServer(context.Background())
-		result := stageResult(harnessruntime.StageStart, startedAt, tc, "Run iperf3 client", map[string]any{
-			"stderr": strings.TrimSpace(string(stderr)),
-		})
-		return result, fmt.Errorf("iperf3 returned invalid JSON: %w; stdout=%q", err, stdout)
+		log.Printf("Failed to unmarshal JSON from iperf3 client output: %v\n", err)
+		// clean up benchmark resources if the client fails to run
+		if cleanupErr := a.cleanupBenchmarkResources(ctx); cleanupErr != nil {
+			log.Printf("Failed to clean up benchmark resources: %v\n", cleanupErr)
+		}
+
+		return stageResult(
+			harnessruntime.StageStart,
+			startedAt,
+			tc,
+			"Run iperf3 client",
+			map[string]any{
+				"stdout": strings.TrimSpace(string(stdout)),
+				"stderr": strings.TrimSpace(string(stderr)),
+			},
+		), fmt.Errorf("failed to unmarshal JSON from iperf3 client output: %w", err)
 	}
 
 	return stageResult(harnessruntime.StageStart, startedAt, tc, "Run iperf3 client", map[string]any{
@@ -214,9 +244,13 @@ func (a *Adapter) WaitReady(ctx context.Context, tc harnessruntime.TrialContext)
 
 func (a *Adapter) Stop(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
 	log.Printf("Stopping network benchmark trial=%s runtime=%s handler=%s image=%s\n", tc.Trial.ID, tc.Trial.RuntimeName, tc.Trial.RuntimeHandler, image(tc))
+
 	startedAt := time.Now()
+
 	err := a.removeServer(ctx)
+
 	result := stageResult(harnessruntime.StageStop, startedAt, tc, "Remove iperf3 server", nil)
+
 	if err != nil {
 		return result, err
 	}
@@ -227,22 +261,17 @@ func (a *Adapter) DeleteTask(ctx context.Context, tc harnessruntime.TrialContext
 	return completedStage(ctx, harnessruntime.StageDelete, "iperf3 containers removed", tc)
 }
 
-func (a *Adapter) Cleanup(ctx context.Context, tc harnessruntime.TrialContext) (harnessruntime.StageResult, error) {
+func (a *Adapter) Cleanup(
+	ctx context.Context,
+	tc harnessruntime.TrialContext,
+) (harnessruntime.StageResult, error) {
 	log.Printf("Cleaning up network benchmark trial=%s runtime=%s handler=%s image=%s\n", tc.Trial.ID, tc.Trial.RuntimeName, tc.Trial.RuntimeHandler, image(tc))
+
 	startedAt := time.Now()
-	err := a.removeServer(ctx)
-	result := stageResult(harnessruntime.StageCleanup, startedAt, tc, "Clean network benchmark resources", nil)
-	if err != nil {
+
+	result := stageResult(harnessruntime.StageCleanup, startedAt, tc, "Cleanup benchmark resources", nil)
+	if err := a.cleanupBenchmarkResources(ctx); err != nil {
 		return result, err
-	}
-	// Remove the dedicated network
-	stdout, stderr, err := a.run(ctx, "network", "rm", a.networkName)
-	if err != nil {
-		result := stageResult(harnessruntime.StageCleanup, startedAt, tc, "Remove iperf3 network", map[string]any{
-			"stdout": strings.TrimSpace(string(stdout)),
-			"stderr": strings.TrimSpace(string(stderr)),
-		})
-		return result, commandError("remove iperf3 network", err, stdout, stderr)
 	}
 
 	return result, nil
@@ -257,6 +286,28 @@ func (a *Adapter) removeServer(ctx context.Context) error {
 		return commandError("remove iperf3 server", err, stdout, stderr)
 	}
 	a.serverRunning = false
+	return nil
+}
+
+func (a *Adapter) cleanupBenchmarkResources(ctx context.Context) error {
+	log.Printf("Cleaning up network benchmark resources: server=%s network=%s\n", a.serverName, a.networkName)
+
+	errors := []error{}
+	if err := a.removeServer(ctx); err != nil {
+		errors = append(errors, err)
+	}
+
+	if a.networkName != "" {
+		stdout, stderr, err := a.run(ctx, "network", "rm", a.networkName)
+		if err != nil {
+			errors = append(errors, commandError("remove iperf3 network", err, stdout, stderr))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("cleanup errors: %v", errors)
+	}
+
 	return nil
 }
 
