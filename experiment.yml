@@ -58,5 +58,5 @@ experiments:
       default:
         image: networkstatic/iperf3:latest
       other:
-      - image: docker.io/jimjuniorb/iperf3-urunc:0.2
+      - image: docker.io/jimjuniorb/iperf3-urunc:0.3
         runtime: urunc

@@ -9,10 +9,14 @@ platforms:
 rootfs:
   from: networkstatic/iperf3:latest
   type: raw
+  include:
+    - from: harbor.nbfc.io/nubificus/urunit:latest
+      source: /urunit
+      destination: /urunit
 
 kernel:
   from: local
   path: bzImage
 
 
-entrypoint: ["/usr/bin/iperf3"]
+entrypoint: ["/urunit", "/usr/bin/iperf3"]
