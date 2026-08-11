@@ -38,11 +38,20 @@ func Run(
 		)
 	}
 
+	if hasNetworkExperiment(m) {
+		checkTool(report, "nerdctl", true)
+	}
+
 	checkHostPorts(report, m)
 	checkHostPathVolumes(report, m)
 	checkEnvironmentVisibility(ctx, report)
 
 	return report, nil
+}
+
+func hasNetworkExperiment(m *manifest.Manifest) bool {
+	_, ok := m.Experiments["network"]
+	return ok
 }
 
 func checkManifest(report *Report, m *manifest.Manifest) {

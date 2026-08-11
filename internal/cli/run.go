@@ -18,6 +18,7 @@ import (
 	harnessruntime "github.com/urunc-dev/evaluation_suite/internal/runtime"
 	runtimeHTTPReadiness "github.com/urunc-dev/evaluation_suite/internal/runtime/httpreadiness"
 	runtimeLifecycle "github.com/urunc-dev/evaluation_suite/internal/runtime/lifecycle"
+	runtimeNetwork "github.com/urunc-dev/evaluation_suite/internal/runtime/network"
 	runtimeStorage "github.com/urunc-dev/evaluation_suite/internal/runtime/storage"
 )
 
@@ -62,6 +63,8 @@ func NewRunCommand() *cobra.Command {
 				return err
 			}
 
+			var adapterFactories []orchestrator.AdapterFactory
+
 			containerdClient, err := containerd.New("/run/containerd/containerd.sock")
 			if err != nil {
 				return err
@@ -70,27 +73,28 @@ func NewRunCommand() *cobra.Command {
 
 			containerdNamespace := namespaces.WithNamespace(cmd.Context(), "default")
 
-			lifecycleAdapterFactory := func(trial plan.Trial) (harnessruntime.Adapter, error) {
-				return runtimeLifecycle.NewAdapter(containerdClient, &containerdNamespace), nil
-			}
-
-			storageAdapterFactory := func(trial plan.Trial) (harnessruntime.Adapter, error) {
-				return runtimeStorage.NewAdapter(containerdClient, &containerdNamespace), nil
-			}
-
-			httpReadinessAdapterFactory := func(trial plan.Trial) (harnessruntime.Adapter, error) {
-				return runtimeHTTPReadiness.NewAdapter(), nil
-			}
-
-			orch := orchestrator.New(
-				lifecycleAdapterFactory,
-				storageAdapterFactory,
-				httpReadinessAdapterFactory,
+			// append the adapters for different experiments
+			adapterFactories = append(adapterFactories,
+				func(trial plan.Trial) (harnessruntime.Adapter, error) {
+					return runtimeLifecycle.NewAdapter(containerdClient, &containerdNamespace), nil
+				},
+				func(trial plan.Trial) (harnessruntime.Adapter, error) {
+					return runtimeStorage.NewAdapter(containerdClient, &containerdNamespace), nil
+				},
+				func(trial plan.Trial) (harnessruntime.Adapter, error) {
+					return runtimeNetwork.NewAdapter(), nil
+				},
+				func(trial plan.Trial) (harnessruntime.Adapter, error) {
+					return runtimeHTTPReadiness.NewAdapter(), nil
+				},
 			)
+
+			orch := orchestrator.New(adapterFactories...)
 
 			result, err := orch.Run(cmd.Context(), p, orchestrator.Options{
 				RunID: runID,
 			})
+
 			if err != nil {
 				return err
 			}
