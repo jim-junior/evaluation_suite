@@ -161,12 +161,3 @@ func NewRunCommand() *cobra.Command {
 
 	return cmd
 }
-
-func planHasExperiment(p *plan.Plan, name string) bool {
-	for _, trial := range p.Trials {
-		if trial.ExperimentName == name {
-			return true
-		}
-	}
-	return false
-}
