@@ -19,6 +19,7 @@ import (
 	runtimeCPU "github.com/urunc-dev/evaluation_suite/internal/runtime/cpu"
 	runtimeHTTPReadiness "github.com/urunc-dev/evaluation_suite/internal/runtime/httpreadiness"
 	runtimeLifecycle "github.com/urunc-dev/evaluation_suite/internal/runtime/lifecycle"
+	runtimeMemory "github.com/urunc-dev/evaluation_suite/internal/runtime/memory"
 	runtimeNetwork "github.com/urunc-dev/evaluation_suite/internal/runtime/network"
 	runtimeStorage "github.com/urunc-dev/evaluation_suite/internal/runtime/storage"
 )
@@ -90,6 +91,9 @@ func NewRunCommand() *cobra.Command {
 				},
 				func(trial plan.Trial) (harnessruntime.Adapter, error) {
 					return runtimeCPU.NewAdapter(), nil
+				},
+				func(trial plan.Trial) (harnessruntime.Adapter, error) {
+					return runtimeMemory.NewAdapter(), nil
 				},
 			)
 
