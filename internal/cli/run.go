@@ -16,8 +16,8 @@ import (
 	"github.com/urunc-dev/evaluation_suite/internal/orchestrator"
 	"github.com/urunc-dev/evaluation_suite/internal/plan"
 	harnessruntime "github.com/urunc-dev/evaluation_suite/internal/runtime"
-	runtimeHTTPReadiness "github.com/urunc-dev/evaluation_suite/internal/runtime/httpreadiness"
 	runtimeCPU "github.com/urunc-dev/evaluation_suite/internal/runtime/cpu"
+	runtimeHTTPReadiness "github.com/urunc-dev/evaluation_suite/internal/runtime/httpreadiness"
 	runtimeLifecycle "github.com/urunc-dev/evaluation_suite/internal/runtime/lifecycle"
 	runtimeNetwork "github.com/urunc-dev/evaluation_suite/internal/runtime/network"
 	runtimeStorage "github.com/urunc-dev/evaluation_suite/internal/runtime/storage"
@@ -90,7 +90,7 @@ func NewRunCommand() *cobra.Command {
 				},
 				func(trial plan.Trial) (harnessruntime.Adapter, error) {
 					return runtimeCPU.NewAdapter(), nil
-				}
+				},
 			)
 
 			orch := orchestrator.New(adapterFactories...)
