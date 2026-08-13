@@ -77,3 +77,11 @@ experiments:
         timeout: 30s
         metricsBrief: true
         runtime: urunc
+
+  memory:
+    workloads:
+      default:
+        image: docker.io/library/nginx:alpine
+      other:
+      - image: harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft-initrd:latest
+        runtime: urunc
