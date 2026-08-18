@@ -284,6 +284,14 @@ func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialCon
 				}
 				return values
 			}())),
+		PSSBytes: uint64(utils.Mean(
+			func() []float64 {
+				values := make([]float64, len(shimMetricsList))
+				for i, m := range shimMetricsList {
+					values[i] = float64(m.PSSBytes)
+				}
+				return values
+			}())),
 	}
 
 	return Metrics{
