@@ -139,19 +139,48 @@ func (o *Orchestrator) runTrial(
 		}...)
 	}
 
-	for _, stage := range stages {
-		// if the stage's experiment does not match the trial's experiment, skip it
-		if runtimeTC.Trial.ExperimentName != stage.experiment {
-			continue
-		}
-		stageResult, err := stage.fn(ctx, runtimeTC)
-		if err != nil {
-			result.RuntimeStages = append(result.RuntimeStages, stageResult)
-			return failTrial(result, stage.name, err)
-		}
-
-		result.RuntimeStages = append(result.RuntimeStages, stageResult)
+	var repetitions int
+	if trial.Repetitions > 0 {
+		repetitions = trial.Repetitions
+	} else {
+		repetitions = 1
 	}
+
+	for i := 0; i < repetitions; i++ {
+
+		for _, stage := range stages {
+			// if the stage's experiment does not match the trial's experiment, skip it
+			if runtimeTC.Trial.ExperimentName != stage.experiment {
+				continue
+			}
+			stageResult, err := stage.fn(ctx, runtimeTC)
+			if err != nil {
+				result.RuntimeStages = append(result.RuntimeStages, stageResult)
+				return failTrial(result, stage.name, err)
+			}
+
+			result.RuntimeStages = append(result.RuntimeStages, stageResult)
+		}
+	}
+
+	// get adapter for the trial's experiment to generate the result
+	var resultAdapter harnessruntime.Adapter
+	for _, adapter := range adapters {
+		if adapter.ExperimentName() == trial.ExperimentName {
+			resultAdapter = adapter
+			break
+		}
+	}
+
+	if resultAdapter != nil {
+		generatedResult, err := resultAdapter.GenerateResult(ctx, runtimeTC, result.RuntimeStages)
+		if err != nil {
+			return failTrial(result, "", fmt.Errorf("generate result: %w", err))
+		}
+		result.Results = generatedResult
+	}
+
+	result.RuntimeStages = nil // Clear runtime stages to save space in the final result
 
 	result.EndedAt = time.Now()
 	result.Duration = result.EndedAt.Sub(result.StartedAt)
