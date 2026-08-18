@@ -13,6 +13,7 @@ import (
 	"time"
 
 	harnessruntime "github.com/urunc-dev/evaluation_suite/internal/runtime"
+	"github.com/urunc-dev/evaluation_suite/internal/utils"
 )
 
 type commandRunner func(context.Context, ...string) ([]byte, error)
@@ -222,4 +223,71 @@ func stageResult(
 		Description: fmt.Sprintf("%s: trial=%s runtime=%s handler=%s image=%s", description, tc.Trial.ID, tc.Trial.RuntimeName, tc.Trial.RuntimeHandler, tc.Trial.Image),
 		Data:        data,
 	}
+}
+
+func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialContext, results []harnessruntime.StageResult) (any, error) {
+	// For this adapter, we can return the metrics collected during the WaitReady stages. there can be multiple WaitReady stages, so we need the mean of cgroups and shims metrics.
+
+	var cgroupMetricsList []CgroupMetrics
+	var shimMetricsList []ShimMetrics
+
+	for _, result := range results {
+		if result.Stage == harnessruntime.StageWaitReady {
+			metrics, ok := result.Data.(Metrics)
+			if !ok {
+				return nil, fmt.Errorf("invalid data type for stage %s: expected Metrics, got %T", result.Stage, result.Data)
+			}
+			cgroupMetricsList = append(cgroupMetricsList, metrics.Cgroup)
+			shimMetricsList = append(shimMetricsList, metrics.Shim)
+		}
+	}
+
+	if len(cgroupMetricsList) == 0 || len(shimMetricsList) == 0 {
+		return nil, errors.New("no metrics collected during WaitReady stages")
+	}
+
+	// Calculate mean of cgroup metrics
+	meanCgroupMetrics := CgroupMetrics{
+		CurrentBytes: uint64(utils.Mean(
+			func() []float64 {
+				values := make([]float64, len(cgroupMetricsList))
+				for i, m := range cgroupMetricsList {
+					values[i] = float64(m.CurrentBytes)
+				}
+				return values
+			}())),
+		PeakBytes: uint64(utils.Mean(
+			func() []float64 {
+				values := make([]float64, len(cgroupMetricsList))
+				for i, m := range cgroupMetricsList {
+					values[i] = float64(m.PeakBytes)
+				}
+				return values
+			}())),
+	}
+
+	// Calculate mean of shim metrics
+	meanShimMetrics := ShimMetrics{
+		USSBytes: uint64(utils.Mean(
+			func() []float64 {
+				values := make([]float64, len(shimMetricsList))
+				for i, m := range shimMetricsList {
+					values[i] = float64(m.USSBytes)
+				}
+				return values
+			}())),
+		RSSBytes: uint64(utils.Mean(
+			func() []float64 {
+				values := make([]float64, len(shimMetricsList))
+				for i, m := range shimMetricsList {
+					values[i] = float64(m.RSSBytes)
+				}
+				return values
+			}())),
+	}
+
+	return Metrics{
+		Cgroup: meanCgroupMetrics,
+		Shim:   meanShimMetrics,
+	}, nil
 }

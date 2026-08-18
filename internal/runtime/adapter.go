@@ -41,4 +41,5 @@ type Adapter interface {
 	Stop(ctx context.Context, tc TrialContext) (StageResult, error)
 	DeleteTask(ctx context.Context, tc TrialContext) (StageResult, error)
 	Cleanup(ctx context.Context, tc TrialContext) (StageResult, error)
+	GenerateResult(ctx context.Context, tc TrialContext, result []StageResult) (any, error)
 }
