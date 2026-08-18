@@ -33,4 +33,5 @@ type TrialResult struct {
 	EndedAt       time.Time                    `json:"endedAt"`
 	Duration      time.Duration                `json:"duration"`
 	RuntimeStages []harnessruntime.StageResult `json:"runtimeStages"`
+	Results       any                          `json:"results"`
 }

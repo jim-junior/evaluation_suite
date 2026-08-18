@@ -57,6 +57,7 @@ func Generate(m *manifest.Manifest) (*Plan, error) {
 				runtimeName,
 				rt.Handler,
 				defaultWorkload,
+				exp.Repetitions,
 			)
 
 			trials = append(trials, trial)
@@ -82,6 +83,7 @@ func Generate(m *manifest.Manifest) (*Plan, error) {
 					rt.Name,
 					rt.Handler,
 					workload,
+					exp.Repetitions,
 				)
 
 				trials = append(trials, trial)
@@ -97,6 +99,7 @@ func Generate(m *manifest.Manifest) (*Plan, error) {
 					runtimeName,
 					rt.Handler,
 					workload,
+					exp.Repetitions,
 				)
 
 				trials = append(trials, trial)
@@ -116,6 +119,7 @@ func buildTrial(
 	runtimeName string,
 	runtimeHandler string,
 	workload manifest.Workload,
+	repetitions int,
 ) Trial {
 	id := makeTrialID(experimentName, workloadName, runtimeName)
 
@@ -133,6 +137,7 @@ func buildTrial(
 		CPUMethod:      workload.CPUMethod,
 		Timeout:        workload.Timeout,
 		MetricsBrief:   workload.MetricsBrief,
+		Repetitions:    repetitions,
 	}
 }
 

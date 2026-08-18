@@ -11,7 +11,8 @@ type Runtime struct {
 }
 
 type Experiment struct {
-	Workloads Workloads `yaml:"workloads"`
+	Workloads   Workloads `yaml:"workloads"`
+	Repetitions int       `yaml:"repetitions,omitempty"`
 }
 
 type Workloads struct {

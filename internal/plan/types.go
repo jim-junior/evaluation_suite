@@ -21,4 +21,5 @@ type Trial struct {
 	CPUMethod      string            `json:"cpuMethod,omitempty"`
 	Timeout        string            `json:"timeout,omitempty"`
 	MetricsBrief   bool              `json:"metricsBrief,omitempty"`
+	Repetitions    int               `json:"repetitions,omitempty"`
 }
