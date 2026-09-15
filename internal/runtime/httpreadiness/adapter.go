@@ -15,6 +15,7 @@ import (
 	"time"
 
 	harnessruntime "github.com/urunc-dev/evaluation_suite/internal/runtime"
+	"github.com/urunc-dev/evaluation_suite/internal/utils"
 )
 
 const (
@@ -409,4 +410,37 @@ func stageResult(
 		Description: fmt.Sprintf("%s: trial=%s runtime=%s handler=%s image=%s", description, tc.Trial.ID, tc.Trial.RuntimeName, tc.Trial.RuntimeHandler, tc.Trial.Image),
 		Data:        data,
 	}
+}
+
+func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialContext, results []harnessruntime.StageResult) (any, error) {
+	// Find the WaitReady stages result to extract the readiness latency. there can be multiple instances. so we need to find the interquartile range of the readiness latency and then find the mean of the interquartile range.
+
+	var readinessLatencies []float64
+	for _, result := range results {
+		if result.Stage == harnessruntime.StageWaitReady {
+			if data, ok := result.Data.(map[string]interface{}); ok {
+				if latency, ok := data["readiness_latency_ms"].(float64); ok {
+					readinessLatencies = append(readinessLatencies, latency)
+				}
+			}
+		}
+	}
+
+	if len(readinessLatencies) == 0 {
+		return nil, fmt.Errorf("no readiness latency data found in trial %s", tc.Trial.ID)
+	}
+
+	lower, upper := utils.InterquartileRange(readinessLatencies)
+	iqr := make([]float64, 0)
+	for _, latency := range readinessLatencies {
+		if latency >= lower && latency <= upper {
+			iqr = append(iqr, latency)
+		}
+	}
+
+	meanLatency := utils.Mean(iqr)
+
+	return map[string]interface{}{
+		"readiness_latency_mean_ms": meanLatency,
+	}, nil
 }

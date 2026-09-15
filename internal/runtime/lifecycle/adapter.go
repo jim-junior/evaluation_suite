@@ -479,3 +479,32 @@ func fakeStage(
 		),
 	}, nil
 }
+
+func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialContext, results []harnessruntime.StageResult) (any, error) {
+	// For this adapter, we can return the first instances of the create, start, and delete stages. There should only be one of each stage per trial.
+
+	var createStage, startStage, deleteStage *harnessruntime.StageResult
+
+	for _, result := range results {
+		switch result.Stage {
+		case harnessruntime.StageCreate:
+			if createStage == nil {
+				createStage = &result
+			}
+		case harnessruntime.StageStart:
+			if startStage == nil {
+				startStage = &result
+			}
+		case harnessruntime.StageDelete:
+			if deleteStage == nil {
+				deleteStage = &result
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"create_stage": createStage.Data,
+		"start_stage":  startStage.Data,
+		"delete_stage": deleteStage.Data,
+	}, nil
+}

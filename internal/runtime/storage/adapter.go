@@ -399,3 +399,14 @@ func extractFIOJSON(stdout string) ([]byte, error) {
 
 	return cleaned.Bytes(), nil
 }
+
+func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialContext, results []harnessruntime.StageResult) (any, error) {
+	// return the first Start stage result that contains the fio JSON output
+	for _, result := range results {
+		if result.Stage == harnessruntime.StageStart {
+			return result.Data, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no Start stage result found for trial %s", tc.Trial.ID)
+}

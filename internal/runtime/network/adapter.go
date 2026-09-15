@@ -393,3 +393,17 @@ func ExtractJSONObject(output []byte) ([]byte, error) {
 
 	return nil, fmt.Errorf("no valid JSON object found in output")
 }
+
+func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialContext, results []harnessruntime.StageResult) (any, error) {
+	// For this adapter, we can return the metrics collected during the StartTask stage.
+	for _, result := range results {
+		if result.Stage == harnessruntime.StageStart {
+			if metrics, ok := result.Data.(map[string]any); ok {
+				return metrics, nil
+			}
+			return nil, fmt.Errorf("invalid data type for stage %s: expected map[string]any, got %T", result.Stage, result.Data)
+		}
+	}
+
+	return nil, fmt.Errorf("no metrics collected during StartTask stage")
+}

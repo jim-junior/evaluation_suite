@@ -16,6 +16,7 @@ runtimes:
 experiments:
 
   http-readiness:
+    repetitions: 10
     workloads:
       default:
         image: docker.io/library/nginx:latest
@@ -79,6 +80,7 @@ experiments:
         runtime: urunc
 
   memory:
+    repetitions: 10
     workloads:
       default:
         image: docker.io/library/nginx:alpine

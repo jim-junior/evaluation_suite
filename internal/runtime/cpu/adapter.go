@@ -191,3 +191,13 @@ func noOpStage(ctx context.Context, stage harnessruntime.Stage, tc harnessruntim
 		Description: fmt.Sprintf("No-op for CLI CPU benchmark: trial=%s", tc.Trial.ID),
 	}, nil
 }
+
+func (a *Adapter) GenerateResult(ctx context.Context, tc harnessruntime.TrialContext, result []harnessruntime.StageResult) (any, error) {
+	// For this adapter, we can return the metrics collected during the StartTask stage.
+	for _, stageResult := range result {
+		if stageResult.Stage == harnessruntime.StageStart {
+			return stageResult.Data, nil
+		}
+	}
+	return nil, errors.New("no StartTask stage result found")
+}
